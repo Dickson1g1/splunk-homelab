@@ -136,8 +136,7 @@ splunk-homelab/
 
 ## Screenshots
 
-> Add screenshots of your running dashboard here after setup.  
-> Recommended: dashboard overview, a triggered alert, and the brute force detection panel.
+
 
 ---
 
