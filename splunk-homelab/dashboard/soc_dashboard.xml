@@ -1,0 +1,338 @@
+<dashboard version="1.1" theme="dark">
+  <label>SOC Security Monitoring Dashboard</label>
+  <description>Dickson Boakye | Splunk Home Lab | Real-time threat detection across Windows events and web logs</description>
+
+  <!-- ============================================================
+       ROW 1: KPI Summary Cards
+       ============================================================ -->
+  <row>
+    <panel>
+      <title>Failed Logins (Last 24h)</title>
+      <single>
+        <search>
+          <query>index=windows_events EventCode=4625 earliest=-24h | stats count</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[0,10,50]</option>
+        <option name="useColors">1</option>
+        <option name="drilldown">all</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Account Lockouts (Last 24h)</title>
+      <single>
+        <search>
+          <query>index=windows_events EventCode=4740 earliest=-24h | stats count</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,1]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Successful Logins (Last 24h)</title>
+      <single>
+        <search>
+          <query>index=windows_events EventCode=4624 earliest=-24h | stats count</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f"]</option>
+        <option name="rangeValues">[0,100,500]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Privilege Escalations (Last 24h)</title>
+      <single>
+        <search>
+          <query>index=windows_events (EventCode=4728 OR EventCode=4732 OR EventCode=4756 OR EventCode=1102) earliest=-24h | stats count</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0,1]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ============================================================
+       ROW 2: Login activity over time + Top failed users
+       ============================================================ -->
+  <row>
+    <panel>
+      <title>Login Activity Over Time (Last 24h)</title>
+      <chart>
+        <search>
+          <query>
+            index=windows_events (EventCode=4624 OR EventCode=4625) earliest=-24h
+            | eval event_type=if(EventCode="4624","Successful Login","Failed Login")
+            | timechart span=1h count BY event_type
+          </query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.seriesColors">["0x53a051","0xdc4e41"]</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Event Count</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Top 10 Failed Login Sources</title>
+      <chart>
+        <search>
+          <query>
+            index=windows_events EventCode=4625 earliest=-24h
+            | stats count AS failed_attempts BY src_ip
+            | sort -failed_attempts
+            | head 10
+          </query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.seriesColors">["0xdc4e41"]</option>
+        <option name="charting.axisTitleX.text">Failed Attempts</option>
+        <option name="charting.axisTitleY.text">Source IP</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================
+       ROW 3: Brute force heatmap + Off-hours logins
+       ============================================================ -->
+  <row>
+    <panel>
+      <title>Brute Force Attempts — Active Attackers</title>
+      <table>
+        <search>
+          <query>
+            index=windows_events EventCode=4625 earliest=-1h
+            | bucket _time span=10m
+            | stats count AS failed_attempts, values(user) AS targeted_accounts BY src_ip, _time
+            | where failed_attempts >= 5
+            | eval severity=case(failed_attempts>=20,"CRITICAL",failed_attempts>=10,"HIGH",true(),"MEDIUM")
+            | sort -failed_attempts
+            | head 20
+            | table src_ip, failed_attempts, targeted_accounts, severity, _time
+          </query>
+          <earliest>-1h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <format type="color" field="severity">
+          <colorPalette type="map">{"CRITICAL":"#dc4e41","HIGH":"#f1813f","MEDIUM":"#f8be34"}</colorPalette>
+        </format>
+        <format type="color" field="failed_attempts">
+          <colorPalette type="minMidMax" maxColor="#dc4e41" midColor="#f8be34" minColor="#53a051"/>
+        </format>
+      </table>
+    </panel>
+
+    <panel>
+      <title>Off-Hours Logins (Last 24h)</title>
+      <table>
+        <search>
+          <query>
+            index=windows_events EventCode=4624 earliest=-24h
+            | eval login_hour=tonumber(strftime(_time,"%H"))
+            | eval day=strftime(_time,"%A")
+            | eval off_hours=if(login_hour&lt;7 OR login_hour>=19 OR day="Saturday" OR day="Sunday","YES","NO")
+            | where off_hours="YES"
+            | eval is_admin=if(match(user,"(?i)admin|svc_|root"),"YES","NO")
+            | stats count AS logins, values(src_ip) AS sources BY user, is_admin, day
+            | sort -logins
+            | head 15
+            | table user, is_admin, logins, sources, day
+          </query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <format type="color" field="is_admin">
+          <colorPalette type="map">{"YES":"#dc4e41","NO":"#53a051"}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================
+       ROW 4: Web log analysis + Top user agents
+       ============================================================ -->
+  <row>
+    <panel>
+      <title>Web Traffic by Status Code (Last 24h)</title>
+      <chart>
+        <search>
+          <query>
+            index=web_logs earliest=-24h
+            | eval status_group=case(
+                status&gt;=500,"5xx Server Error",
+                status&gt;=400,"4xx Client Error",
+                status&gt;=300,"3xx Redirect",
+                status&gt;=200,"2xx Success",
+                true(),"Other"
+              )
+            | timechart span=1h count BY status_group
+          </query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.seriesColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41","0x6db7c6"]</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Suspicious Web Requests (404s by IP)</title>
+      <chart>
+        <search>
+          <query>
+            index=web_logs status=404 earliest=-24h
+            | stats count AS not_found_hits BY clientip
+            | where not_found_hits > 10
+            | sort -not_found_hits
+            | head 10
+          </query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================
+       ROW 5: Privilege escalation events + Security event log
+       ============================================================ -->
+  <row>
+    <panel>
+      <title>Privilege Changes and Group Modifications (Last 7d)</title>
+      <table>
+        <search>
+          <query>
+            index=windows_events (EventCode=4728 OR EventCode=4732 OR EventCode=4756 OR EventCode=1102 OR EventCode=104) earliest=-7d
+            | eval event_desc=case(
+                EventCode="4728","User added to global group",
+                EventCode="4732","User added to local group",
+                EventCode="4756","User added to universal group",
+                EventCode="1102","SECURITY LOG CLEARED",
+                EventCode="104", "SYSTEM LOG CLEARED"
+              )
+            | eval severity=case(
+                EventCode="1102" OR EventCode="104","CRITICAL",
+                true(),"HIGH"
+              )
+            | table _time, user, group_name, ComputerName, event_desc, severity
+            | sort -_time
+            | head 25
+          </query>
+          <earliest>-7d</earliest>
+          <latest>now</latest>
+        </search>
+        <format type="color" field="severity">
+          <colorPalette type="map">{"CRITICAL":"#dc4e41","HIGH":"#f1813f"}</colorPalette>
+        </format>
+        <format type="color" field="event_desc">
+          <colorPalette type="map">{"SECURITY LOG CLEARED":"#dc4e41","SYSTEM LOG CLEARED":"#dc4e41"}</colorPalette>
+        </format>
+      </table>
+    </panel>
+
+    <panel>
+      <title>Event Volume by Type (Last 24h)</title>
+      <chart>
+        <search>
+          <query>
+            index=windows_events earliest=-24h
+            | eval event_name=case(
+                EventCode="4624","Successful Logon",
+                EventCode="4625","Failed Logon",
+                EventCode="4634","Logoff",
+                EventCode="4648","Explicit Credential Logon",
+                EventCode="4720","User Account Created",
+                EventCode="4726","User Account Deleted",
+                EventCode="4728" OR EventCode="4732" OR EventCode="4756","Group Membership Changed",
+                EventCode="4740","Account Locked Out",
+                EventCode="1102" OR EventCode="104","Log Cleared",
+                true(),"Other (EventCode=".EventCode.")"
+              )
+            | stats count BY event_name
+            | sort -count
+          </query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.seriesColors">["0x6db7c6"]</option>
+        <option name="charting.axisTitleX.text">Count</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================
+       ROW 6: Notable events raw feed
+       ============================================================ -->
+  <row>
+    <panel>
+      <title>Recent High-Severity Events Feed (Last 4h)</title>
+      <table>
+        <search>
+          <query>
+            index=windows_events earliest=-4h
+              (EventCode=4740 OR EventCode=4728 OR EventCode=4732
+               OR EventCode=4756 OR EventCode=1102 OR EventCode=104)
+            OR (index=windows_events EventCode=4625 earliest=-4h)
+            | eval severity=case(
+                EventCode="1102" OR EventCode="104","CRITICAL",
+                EventCode="4728" OR EventCode="4732" OR EventCode="4756","HIGH",
+                EventCode="4740","HIGH",
+                EventCode="4625","MEDIUM"
+              )
+            | eval event_name=case(
+                EventCode="4625","Failed Login",
+                EventCode="4740","Account Lockout",
+                EventCode="4728" OR EventCode="4732" OR EventCode="4756","Group Membership Change",
+                EventCode="1102","Security Log Cleared",
+                EventCode="104","System Log Cleared"
+              )
+            | table _time, severity, event_name, user, src_ip, ComputerName
+            | sort -_time
+            | head 50
+          </query>
+          <earliest>-4h</earliest>
+          <latest>now</latest>
+        </search>
+        <format type="color" field="severity">
+          <colorPalette type="map">{"CRITICAL":"#dc4e41","HIGH":"#f1813f","MEDIUM":"#f8be34","LOW":"#53a051"}</colorPalette>
+        </format>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+</dashboard>

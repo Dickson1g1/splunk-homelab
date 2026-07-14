@@ -1,0 +1,68 @@
+-- ============================================================
+-- DETECTION RULE 1: Brute Force Login Attempts
+-- ============================================================
+-- Description : Detects 5+ failed login attempts from the
+--               same source IP within a 10-minute window.
+-- MITRE ATT&CK: T1110 - Brute Force (Credential Access)
+-- NIST Phase  : Detect
+-- Severity    : High
+-- Schedule    : Run every 10 minutes, look back 10 minutes
+-- ============================================================
+
+index=windows_events sourcetype="WinEventLog:Security" EventCode=4625
+| bucket _time span=10m
+| stats
+    count                    AS failed_attempts,
+    dc(src_ip)               AS unique_ips,
+    values(user)             AS targeted_accounts,
+    first(_time)             AS first_attempt,
+    last(_time)              AS last_attempt
+  BY src_ip, _time
+| where failed_attempts >= 5
+| eval severity = case(
+    failed_attempts >= 20, "CRITICAL",
+    failed_attempts >= 10, "HIGH",
+    true(),                 "MEDIUM"
+  )
+| eval mitre_tactic    = "Credential Access"
+| eval mitre_technique = "T1110 - Brute Force"
+| eval recommended_action = "Block src_ip at firewall. Check if account was compromised. Review successful logins from this IP."
+| table
+    src_ip,
+    failed_attempts,
+    targeted_accounts,
+    severity,
+    mitre_tactic,
+    mitre_technique,
+    recommended_action,
+    first_attempt,
+    last_attempt
+| sort - failed_attempts
+
+
+-- ============================================================
+-- HOW TO SAVE AS AN ALERT IN SPLUNK
+-- ============================================================
+-- 1. Paste the SPL above (without these comment lines) into
+--    Search & Reporting
+-- 2. Click Save As → Alert
+-- 3. Configure:
+--      Title     : Brute Force Login Attempts Detected
+--      Alert type: Scheduled
+--      Schedule  : Run every 10 minutes
+--      Time range: Last 10 minutes
+--      Trigger   : Number of Results > 0
+--      Actions   : Add to Triggered Alerts (set severity: High)
+-- ============================================================
+
+
+-- ============================================================
+-- TEST QUERY — verify data is indexed correctly first
+-- ============================================================
+-- Run this first to confirm you have EventCode 4625 in your index:
+--
+--   index=windows_events EventCode=4625 | stats count BY EventCode
+--
+-- Expected output: EventCode=4625, count > 0
+-- If count = 0, check your log upload and sourcetype mapping.
+-- ============================================================

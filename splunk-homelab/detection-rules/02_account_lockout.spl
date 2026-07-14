@@ -1,0 +1,65 @@
+-- ============================================================
+-- DETECTION RULE 2: Account Lockout Events
+-- ============================================================
+-- Description : Detects when user accounts are locked out.
+--               Multiple lockouts suggest an active attack or
+--               misconfigured service using stale credentials.
+-- MITRE ATT&CK: T1110.001 - Password Guessing (Credential Access)
+-- NIST Phase  : Detect → Respond
+-- Severity    : High
+-- Schedule    : Run every 5 minutes, look back 5 minutes
+-- ============================================================
+
+index=windows_events sourcetype="WinEventLog:Security" EventCode=4740
+| stats
+    count                AS lockout_count,
+    values(src_ip)       AS source_ips,
+    values(ComputerName) AS affected_hosts,
+    first(_time)         AS first_lockout,
+    last(_time)          AS last_lockout
+  BY user
+| eval severity = case(
+    lockout_count >= 3, "CRITICAL",
+    lockout_count == 2, "HIGH",
+    true(),              "MEDIUM"
+  )
+| eval mitre_tactic    = "Credential Access"
+| eval mitre_technique = "T1110.001 - Password Guessing"
+| eval nist_phase      = "Detect"
+| eval recommended_action = "Unlock account only after confirming with user. If user did not initiate, treat as compromise. Investigate source_ips."
+| table
+    user,
+    lockout_count,
+    source_ips,
+    affected_hosts,
+    severity,
+    mitre_tactic,
+    mitre_technique,
+    recommended_action,
+    first_lockout,
+    last_lockout
+| sort - lockout_count
+
+
+-- ============================================================
+-- HOW TO SAVE AS AN ALERT IN SPLUNK
+-- ============================================================
+-- 1. Paste SPL above into Search & Reporting
+-- 2. Save As → Alert
+-- Configure:
+--      Title     : Account Lockout Detected
+--      Schedule  : Run every 5 minutes
+--      Time range: Last 5 minutes
+--      Trigger   : Number of Results > 0
+--      Actions   : Add to Triggered Alerts (severity: High)
+-- ============================================================
+
+
+-- ============================================================
+-- BONUS: Lockout trend over time (use in dashboard)
+-- ============================================================
+--
+--   index=windows_events EventCode=4740
+--   | timechart span=1h count AS lockouts BY user
+--
+-- ============================================================

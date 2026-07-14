@@ -1,0 +1,84 @@
+-- ============================================================
+-- DETECTION RULE 5: Privilege Escalation Attempts
+-- ============================================================
+-- Description : Detects three escalation signals:
+--               (A) New user added to privileged group
+--               (B) Standard user running admin-level commands
+--               (C) Audit policy or security log cleared
+-- MITRE ATT&CK: T1078 - Valid Accounts / T1098 - Account Manipulation
+--               T1562.002 - Disable Windows Event Logging
+-- NIST Phase  : Detect → Respond (immediate)
+-- Severity    : Critical
+-- Schedule    : Run every 5 minutes, look back 5 minutes
+-- ============================================================
+
+
+-- ============================================================
+-- QUERY A: User added to privileged group
+-- (EventCode 4728 = added to security-enabled global group)
+-- (EventCode 4732 = added to security-enabled local group)
+-- (EventCode 4756 = added to security-enabled universal group)
+-- ============================================================
+
+index=windows_events sourcetype="WinEventLog:Security"
+  (EventCode=4728 OR EventCode=4732 OR EventCode=4756)
+| eval event_description = case(
+    EventCode="4728", "User added to global privileged group",
+    EventCode="4732", "User added to local privileged group",
+    EventCode="4756", "User added to universal privileged group"
+  )
+| eval is_high_value_group = if(
+    match(group_name, "(?i)Domain Admins|Administrators|Enterprise Admins|Schema Admins|Account Operators|Backup Operators"),
+    "YES - CRITICAL GROUP", "NO"
+  )
+| eval severity    = if(is_high_value_group="YES - CRITICAL GROUP", "CRITICAL", "HIGH")
+| eval mitre_tactic    = "Privilege Escalation / Persistence"
+| eval mitre_technique = "T1098 - Account Manipulation"
+| eval recommended_action = "IMMEDIATE: Verify change was authorized via change management. If unauthorized, remove from group, reset password, and initiate IR process."
+| table
+    _time, user, group_name, src_user, ComputerName,
+    event_description, is_high_value_group,
+    severity, mitre_tactic, mitre_technique, recommended_action
+
+
+-- ============================================================
+-- QUERY B: Security log cleared (EventCode 1102 / 104)
+-- This is a major red flag — attackers clear logs to cover tracks
+-- ============================================================
+
+-- index=windows_events sourcetype="WinEventLog:Security"
+--   (EventCode=1102 OR EventCode=104)
+-- | eval severity          = "CRITICAL"
+-- | eval mitre_tactic      = "Defense Evasion"
+-- | eval mitre_technique   = "T1562.002 - Disable Windows Event Logging"
+-- | eval recommended_action = "IMMEDIATE INCIDENT RESPONSE. Log clearing is active attacker behavior. Isolate host, preserve memory, escalate to Tier 2."
+-- | table _time, user, ComputerName, EventCode, severity, mitre_technique, recommended_action
+
+
+-- ============================================================
+-- QUERY C: Combined escalation view (run this in dashboard)
+-- ============================================================
+
+-- index=windows_events sourcetype="WinEventLog:Security"
+--   (EventCode=4728 OR EventCode=4732 OR EventCode=4756
+--    OR EventCode=1102 OR EventCode=104)
+-- | eval event_type = case(
+--     EventCode=4728 OR EventCode=4732 OR EventCode=4756, "Group Membership Change",
+--     EventCode=1102 OR EventCode=104,                    "Security Log Cleared"
+--   )
+-- | eval severity = case(
+--     EventCode=1102 OR EventCode=104, "CRITICAL",
+--     true(),                          "HIGH"
+--   )
+-- | timechart span=1h count BY event_type
+
+
+-- ============================================================
+-- HOW TO SAVE AS AN ALERT IN SPLUNK
+-- ============================================================
+-- Title     : Privilege Escalation / Group Change Detected
+-- Schedule  : Run every 5 minutes
+-- Time range: Last 5 minutes
+-- Trigger   : Number of Results > 0
+-- Severity  : Critical
+-- ============================================================

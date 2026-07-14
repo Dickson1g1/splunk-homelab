@@ -1,0 +1,78 @@
+-- ============================================================
+-- DETECTION RULE 3: Off-Hours Login Activity
+-- ============================================================
+-- Description : Detects successful logins occurring outside
+--               normal business hours (before 7am or after 7pm)
+--               or on weekends. Insider threat and compromised
+--               credential indicator.
+-- MITRE ATT&CK: T1078 - Valid Accounts (Initial Access)
+-- NIST Phase  : Detect
+-- Severity    : Medium (escalate if admin account)
+-- Schedule    : Run every 1 hour, look back 1 hour
+-- ============================================================
+
+index=windows_events sourcetype="WinEventLog:Security" EventCode=4624
+| eval login_hour    = tonumber(strftime(_time, "%H"))
+| eval day_of_week   = strftime(_time, "%A")
+| eval is_off_hours  = if(
+    login_hour < 7 OR login_hour >= 19
+    OR day_of_week="Saturday"
+    OR day_of_week="Sunday",
+    "YES", "NO"
+  )
+| where is_off_hours="YES"
+| eval is_admin = if(match(user, "(?i)admin|svc_|service|root"), "YES", "NO")
+| eval severity = case(
+    is_admin="YES",          "HIGH",
+    login_hour < 3,          "HIGH",
+    day_of_week="Saturday"
+    OR day_of_week="Sunday", "MEDIUM",
+    true(),                  "LOW"
+  )
+| stats
+    count              AS login_count,
+    values(src_ip)     AS source_ips,
+    values(LogonType)  AS logon_types,
+    min(_time)         AS earliest_login,
+    max(_time)         AS latest_login
+  BY user, is_admin, severity, day_of_week
+| eval mitre_tactic    = "Initial Access / Persistence"
+| eval mitre_technique = "T1078 - Valid Accounts"
+| eval recommended_action = "Verify with user if login was expected. Check for concurrent sessions. Escalate if admin account or no user confirmation within 30 min."
+| table
+    user,
+    is_admin,
+    login_count,
+    source_ips,
+    logon_types,
+    day_of_week,
+    severity,
+    mitre_tactic,
+    recommended_action,
+    earliest_login,
+    latest_login
+| sort - severity, - login_count
+
+
+-- ============================================================
+-- HOW TO SAVE AS AN ALERT IN SPLUNK
+-- ============================================================
+-- Title     : Off-Hours Login Activity Detected
+-- Schedule  : Run every 1 hour
+-- Time range: Last 1 hour
+-- Trigger   : Number of Results > 0
+-- Severity  : Medium
+-- ============================================================
+
+
+-- ============================================================
+-- Logon Type reference (useful for triage)
+-- ============================================================
+-- Type 2  = Interactive (local keyboard)
+-- Type 3  = Network (shared folder, mapped drive)
+-- Type 4  = Batch (scheduled task)
+-- Type 5  = Service (service startup)
+-- Type 7  = Unlock (screen unlock)
+-- Type 10 = RemoteInteractive (RDP) ← HIGH RISK off-hours
+-- Type 11 = CachedInteractive (cached credentials)
+-- ============================================================
