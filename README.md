@@ -1,4 +1,19 @@
-# Splunk SOC Home Lab
+
+     ███████╗██████╗ ██╗     ██╗   ██╗███╗   ██╗██╗  ██╗
+     ██╔════╝██╔══██╗██║     ██║   ██║████╗  ██║██║ ██╔╝
+     ███████╗██████╔╝██║     ██║   ██║██╔██╗ ██║█████╔╝
+     ╚════██║██╔═══╝ ██║     ██║   ██║██║╚██╗██║██╔═██╗
+     ███████║██║     ███████╗╚██████╔╝██║ ╚████║██║  ██╗
+     ╚══════╝╚═╝     ╚══════╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═╝
+     ███████╗ ██████╗  ██████╗    ██╗      █████╗ ██████╗
+     ██╔════╝██╔═══██╗██╔════╝    ██║     ██╔══██╗██╔══██╗
+     ███████╗██║   ██║██║         ██║     ███████║██████╔╝
+     ╚════██║██║   ██║██║         ██║     ██╔══██║██╔══██╗
+     ███████║╚██████╔╝╚██████╗    ███████╗██║  ██║██████╔╝
+     ╚══════╝ ╚═════╝  ╚═════╝    ╚══════╝╚═╝  ╚═╝╚═════╝
+
+                    Built by Dickson Boakye | github.com/Dickson1g1
+    
 
 A fully functional Security Operations Center (SOC) home lab built on Splunk Free. Ingests Windows event logs and web server logs, runs 5 detection rules mapped to the NIST framework, and visualizes threats on a live security dashboard.
 
