@@ -135,6 +135,7 @@ splunk-homelab/
 ---
 
 ## Screenshots
+<img width="3837" height="2100" alt="image" src="https://github.com/user-attachments/assets/39e19803-523a-4421-b2ee-e0849d10f865" />
 
 
 
